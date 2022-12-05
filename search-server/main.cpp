@@ -273,3 +273,247 @@ int main() {
     }
     return 0;
 }
+
+//ТЕСТЫ
+void TestExcludeStopWordsFromAddedDocumentContent() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = {1, 2, 3};
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        const auto found_docs = server.FindTopDocuments("in"s);
+        ASSERT_EQUAL(found_docs.size(), 1u);
+        const Document& doc0 = found_docs[0];
+        ASSERT_EQUAL(doc0.id, doc_id);
+    }
+
+    {
+        SearchServer server;
+        server.SetStopWords("in the"s);
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        ASSERT_HINT(server.FindTopDocuments("in"s).empty(),
+                    "Stop words must be excluded from documents"s);
+    }
+}
+
+void TestMinusWordsInQuery() {
+
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = {1, 2, 3};
+
+    const int doc_id_ = 43;
+    const string content_ = "green cat from gold city"s;
+    const vector<int> ratings_ = {3, 2, 1};
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id_, content_, DocumentStatus::ACTUAL, ratings_);
+        const auto found_docs = server.FindTopDocuments("cat"s);
+        ASSERT(found_docs.size() == 2);
+        const auto found_docs_ = server.FindTopDocuments("cat -from"s); // добавили минус-слово
+        ASSERT(found_docs_.size() == 1);    // из результата поиска ушел документ с таким словом
+    }
+}
+
+void TestDocumentsMatching() {
+
+    const int doc_id_ = 43;
+    const string content_ = "green cat from gold city"s;
+    const vector<int> ratings_ = {3, 2, 1};
+
+    const string raw_query_ = "from green gold"s;
+    const string raw_query_1 = "from -green gold"s;
+    {
+        SearchServer server;
+        server.AddDocument(doc_id_, content_, DocumentStatus::ACTUAL, ratings_);
+
+        tuple<vector<string>, DocumentStatus> matched = server.MatchDocument(raw_query_, doc_id_);
+        ASSERT( (get<0>(matched)).size() == 3);   
+
+        matched = server.MatchDocument(raw_query_1, doc_id_);
+        ASSERT((get<0>(matched)).size() == 0);      
+    }
+}
+
+void Test_RatingCalc_TFIDFCalc_SortDocsByRelevance() {
+    const int doc_id = 42;
+    const string content = "cat in the big city"s;
+    const vector<int> ratings = {1, 2, 3};
+
+    const int doc_id_1 = 43;
+    const string content_1 = "green cat from gold city"s;
+    const vector<int> ratings_1 = {4, 5, 6};
+
+    const int doc_id_2 = 44;
+    const string content_2 = "angry cat from outer space"s;
+    const vector<int> ratings_2 = {2, 3, 4};
+
+    const string raw_query = "angry from cat"s;
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id_1, content_1, DocumentStatus::ACTUAL, ratings_1);
+        server.AddDocument(doc_id_2, content_2, DocumentStatus::ACTUAL, ratings_2);
+
+        // результат поиска
+        vector<Document> found_docs = server.FindTopDocuments(raw_query);
+
+        ASSERT(found_docs[0].id == 44 && found_docs[1].id == 43 && found_docs[2].id == 42);
+        ASSERT(found_docs[0].rating == 3 && found_docs[1].rating == 5 && found_docs[2].rating == 2);
+        ASSERT(found_docs[0].relevance > found_docs[1].relevance && found_docs[1].relevance > found_docs[2].relevance);
+
+      
+        double idf_angry = log(3.0 / 1);
+        double idf_from = log(3.0 / 2);
+        double idf_cat = log(3.0 / 3);
+
+        double tf_angry_in_id42 = 0.0/5,  tf_from_in_id42 = 0.0/5,    tf_cat_in_id42 = 1.0/5;
+        double tf_angry_in_id43 = 0.0/5,  tf_from_in_id43 = 1.0/5,    tf_cat_in_id43 = 1.0/5;
+        double tf_angry_in_id44 = 1.0/5,  tf_from_in_id44 = 1.0/5,    tf_cat_in_id44 = 1.0/5;
+
+        // перемножим, сложим, посолим ...
+        double relevance_id42 = idf_angry * tf_angry_in_id42 +
+                                idf_from * tf_from_in_id42 +
+                                idf_cat * tf_cat_in_id42;
+
+        double relevance_id43 = idf_angry * tf_angry_in_id43 +
+                                idf_from * tf_from_in_id43 +
+                                idf_cat * tf_cat_in_id43;
+
+        double relevance_id44 = idf_angry * tf_angry_in_id44 +
+                                idf_from * tf_from_in_id44 +
+                                idf_cat * tf_cat_in_id44;
+   
+        ASSERT(relevance_id44 == found_docs[0].relevance);
+        ASSERT(relevance_id43 == found_docs[1].relevance);
+        ASSERT(relevance_id42 == found_docs[2].relevance);
+      
+    }
+}
+
+void TestSearchByStatus() {
+    {
+        SearchServer server;
+        const auto found_docs1 = server.FindTopDocuments("cat"s, DocumentStatus::ACTUAL);
+        ASSERT(found_docs1.size() == 0);
+        const auto found_docs2 = server.FindTopDocuments("cat"s, DocumentStatus::IRRELEVANT);
+        ASSERT(found_docs2.size() == 0);
+        const auto found_docs3 = server.FindTopDocuments("cat"s, DocumentStatus::BANNED);
+        ASSERT(found_docs3.size() == 0);
+        const auto found_docs4 = server.FindTopDocuments("cat"s, DocumentStatus::REMOVED);
+        ASSERT(found_docs4.size() == 0);
+
+   
+        server.AddDocument(0, "cat"s, DocumentStatus::ACTUAL, {1,2});
+        server.AddDocument(1, "cat"s, DocumentStatus::ACTUAL, {1, 2});
+        server.AddDocument(2, "cat"s, DocumentStatus::ACTUAL, {1, 2});
+        server.AddDocument(3, "cat"s, DocumentStatus::ACTUAL, {1, 2});
+        server.AddDocument(4, "cat"s, DocumentStatus::ACTUAL, {1, 2});
+
+        const auto found_docs5 = server.FindTopDocuments("cat"s, DocumentStatus::ACTUAL);
+        ASSERT(found_docs5.size() == 5);                                                        
+        const auto found_docs6 = server.FindTopDocuments("cat"s, DocumentStatus::IRRELEVANT);
+        ASSERT(found_docs6.size() == 0);
+        const auto found_docs7 = server.FindTopDocuments("cat"s, DocumentStatus::BANNED);
+        ASSERT(found_docs7.size() == 0);
+        const auto found_docs8 = server.FindTopDocuments("cat"s, DocumentStatus::REMOVED);
+        ASSERT(found_docs8.size() == 0);
+
+     
+        server.AddDocument(5, "cat"s, DocumentStatus::IRRELEVANT, {1, 2});
+        server.AddDocument(6, "cat"s, DocumentStatus::IRRELEVANT, {1, 2});
+        server.AddDocument(7, "cat"s, DocumentStatus::IRRELEVANT, {1, 2});
+        server.AddDocument(8, "cat"s, DocumentStatus::IRRELEVANT, {1, 2});
+
+        const auto found_docs9 = server.FindTopDocuments("cat"s, DocumentStatus::ACTUAL);
+        ASSERT(found_docs9.size() == 5);
+        const auto found_docs10 = server.FindTopDocuments("cat"s, DocumentStatus::IRRELEVANT);
+        ASSERT(found_docs10.size() == 4);                                                       
+        const auto found_docs11 = server.FindTopDocuments("cat"s, DocumentStatus::BANNED);
+        ASSERT(found_docs11.size() == 0);
+        const auto found_docs12 = server.FindTopDocuments("cat"s, DocumentStatus::REMOVED);
+        ASSERT(found_docs12.size() == 0);
+
+     
+        server.AddDocument(9, "cat"s, DocumentStatus::BANNED, {1, 2});
+        server.AddDocument(10, "cat"s, DocumentStatus::BANNED, {1, 2});
+        server.AddDocument(11, "cat"s, DocumentStatus::BANNED, {1, 2});
+
+        const auto found_docs13 =server.FindTopDocuments("cat"s, DocumentStatus::ACTUAL);
+        ASSERT(found_docs13.size() == 5);
+        const auto found_docs14 = server.FindTopDocuments("cat"s, DocumentStatus::IRRELEVANT);
+        ASSERT(found_docs14.size() == 4);
+        const auto found_docs15 = server.FindTopDocuments("cat"s, DocumentStatus::BANNED);
+        ASSERT(found_docs15.size() == 3);                                                      
+        const auto found_docs16 = server.FindTopDocuments("cat"s, DocumentStatus::REMOVED);
+        ASSERT(found_docs16.size() == 0);
+
+       
+        server.AddDocument(12, "cat"s, DocumentStatus::REMOVED, {1, 2});
+        server.AddDocument(13, "cat"s, DocumentStatus::REMOVED, {1, 2});
+
+        const auto found_docs17 = server.FindTopDocuments("cat"s, DocumentStatus::ACTUAL);
+        ASSERT(found_docs17.size() == 5);
+        const auto found_docs18 = server.FindTopDocuments("cat"s, DocumentStatus::IRRELEVANT);
+        ASSERT(found_docs18.size() == 4);
+        const auto found_docs19 = server.FindTopDocuments("cat"s, DocumentStatus::BANNED);
+        ASSERT(found_docs19.size() == 3);
+        const auto found_docs20 = server.FindTopDocuments("cat"s, DocumentStatus::REMOVED);
+        ASSERT(found_docs20.size() == 2);                                                     
+    }
+}
+
+void TestFilteringByPredicat() {
+    {
+        SearchServer server;
+        server.AddDocument(0, "cat"s, DocumentStatus::ACTUAL, {1, 2, 3});   
+        server.AddDocument(1, "cat"s, DocumentStatus::ACTUAL, {2, 3, 4});   
+        server.AddDocument(2, "cat"s, DocumentStatus::ACTUAL, {3, 4, 5});   
+
+        server.AddDocument(4, "cat"s, DocumentStatus::IRRELEVANT, {1, 2, 3});  
+        server.AddDocument(5, "cat"s, DocumentStatus::IRRELEVANT, {2, 3, 4});  
+        server.AddDocument(6, "cat"s, DocumentStatus::IRRELEVANT, {3, 4, 5});  
+
+        server.AddDocument(8, "cat"s, DocumentStatus::BANNED, {1, 2, 3});  
+        server.AddDocument(9, "cat"s, DocumentStatus::BANNED, {2, 3, 4});  
+        server.AddDocument(10, "cat"s, DocumentStatus::BANNED, {3, 4, 5});  
+
+        server.AddDocument(12, "cat"s, DocumentStatus::REMOVED, {1, 2, 3});  
+        server.AddDocument(13, "cat"s, DocumentStatus::REMOVED, {2, 3, 4});  
+        server.AddDocument(14, "cat"s, DocumentStatus::REMOVED, {3, 4, 5});  
+
+        // поиск по id = 10 документа
+        vector<Document> found_docs = server.FindTopDocuments("cat"s,
+                                                              [](int document_id, DocumentStatus status, int rating) { return document_id == 10; });
+        ASSERT(found_docs.size() == 1 && found_docs.at(0).id == 10 && found_docs.at(0).rating == 4);  
+
+      
+        found_docs = server.FindTopDocuments("cat"s,
+                                             [](int document_id, DocumentStatus status, int rating) { return rating == 3; });
+        ASSERT(found_docs.size() == 4);
+        ASSERT(found_docs.at(0).id == 1 && found_docs.at(1).id == 5 &&  
+               found_docs.at(2).id == 9 && found_docs.at(3).id == 13);
+
+        // поиск документа по status = IRRELEVANT
+        found_docs = server.FindTopDocuments(
+                "cat"s, [](int document_id, DocumentStatus status, int rating) {return status == DocumentStatus::IRRELEVANT; });
+        ASSERT(found_docs.size() == 3);
+        ASSERT(found_docs.at(0).id == 6 && found_docs.at(1).id == 5 && found_docs.at(2).id == 4); 
+    }
+}
+
+void Test1() {
+}
+
+// Функция TestSearchServer является точкой входа для запуска тестов
+void TestSearchServer() {
+    RUN_TEST(TestExcludeStopWordsFromAddedDocumentContent);
+    RUN_TEST(TestMinusWordsInQuery);
+    RUN_TEST(TestDocumentsMatching);
+    RUN_TEST(Test_RatingCalc_TFIDFCalc_SortDocsByRelevance);
+    RUN_TEST(TestSearchByStatus);
+    RUN_TEST(TestFilteringByPredicat);
+    // Не забудьте вызывать остальные тесты здесь
+}

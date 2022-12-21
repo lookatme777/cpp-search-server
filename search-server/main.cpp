@@ -341,7 +341,7 @@ void PrintDocument(const Document& document) {
 }
 int main() {
 
-    setlocale(LC_ALL, "RU");
+    //setlocale(LC_ALL, "RU");
 
     try
     {

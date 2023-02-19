@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include <set>
+#include <vector>
 #include "document.h"
 
 using namespace std;
@@ -17,3 +18,5 @@ std::set<std::string> MakeUniqueNonEmptyStrings(const StringContainer& strings) 
 }
 
 std::ostream& operator << (std::ostream& out, const Document search);
+
+std::vector<std::string> SplitIntoWords(const std::string&);

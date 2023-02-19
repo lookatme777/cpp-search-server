@@ -95,7 +95,7 @@ vector<Document> SearchServer::FindTopDocuments(const string& raw_query,
 
     sort(matched_documents.begin(), matched_documents.end(),
         [](const Document& lhs, const Document& rhs) {
-            if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+            if (abs(lhs.relevance - rhs.relevance) < VALUE) {
                 return lhs.rating > rhs.rating;
             }
             else {

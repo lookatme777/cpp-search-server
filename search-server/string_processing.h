@@ -17,6 +17,4 @@ std::set<std::string> MakeUniqueNonEmptyStrings(const StringContainer& strings) 
     return non_empty_strings;
 }
 
-std::ostream& operator << (std::ostream& out, const Document search);
-
 std::vector<std::string> SplitIntoWords(const std::string&);

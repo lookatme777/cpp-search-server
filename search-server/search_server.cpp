@@ -1,3 +1,5 @@
+#include "search_server.h"
+
 SearchServer::SearchServer(const string& stop_words_text)
     : SearchServer(
         SplitIntoWords(stop_words_text))  // Invoke delegating constructor from string container
@@ -14,9 +16,10 @@ void SearchServer::AddDocument(int document_id, const string& document, Document
     const double inv_word_count = 1.0 / words.size();
     for (const string& word : words) {
         word_to_document_freqs_[word][document_id] += inv_word_count;
+        word_freqs[document_id][word] += inv_word_count;
     }
     documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
-    document_ids_.push_back(document_id);
+    document_ids_.insert(document_id);
 }
 
 vector<Document> SearchServer::FindTopDocuments(const string& raw_query, DocumentStatus status) const {
@@ -34,8 +37,25 @@ int SearchServer::GetDocumentCount() const {
     return documents_.size();
 }
 
-int SearchServer::GetDocumentId(int index) const {
-    return document_ids_.at(index);
+
+set<int>::const_iterator SearchServer::begin() const
+{
+    return document_ids_.begin();
+}
+
+set<int>::const_iterator SearchServer::end() const
+{
+    return document_ids_.end();
+}
+
+set<int>::iterator SearchServer::begin()
+{
+    return document_ids_.begin();
+}
+
+set<int>::iterator SearchServer::end()
+{
+    return document_ids_.end();
 }
 
 tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& raw_query,
@@ -133,4 +153,21 @@ SearchServer::Query SearchServer::ParseQuery(const string& text) const {
 
 double SearchServer::ComputeWordInverseDocumentFreq(const std::string& word) const {
     return std::log(GetDocumentCount() * 1.0 /word_to_document_freqs_.at(word).size());
+}
+
+const map<string, double>& SearchServer::GetWordFrequencies(int document_id) const {
+
+    static map<string, double>nullmap{};
+
+    if (word_freqs.count(document_id) == 1) {
+        return word_freqs.at(document_id);
+    }
+    else
+        return nullmap;
+}
+
+void SearchServer::RemoveDocument(int document_id) {
+    documents_.erase(document_id);
+    word_freqs.erase(document_id);
+    document_ids_.erase(document_id);
 }

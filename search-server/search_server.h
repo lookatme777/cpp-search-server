@@ -8,6 +8,7 @@
 #include "read_input_functions.h"
 #include "string_processing.h"
 
+
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
 const double VALUE = 1e-6;
 
@@ -30,12 +31,19 @@ public:
     vector<Document> FindTopDocuments(const string& raw_query) const;
 
     int GetDocumentCount() const;
-
-    int GetDocumentId(int index) const;
+    
+    set<int>::const_iterator begin() const;
+    set<int>::const_iterator end() const;
+    set<int>::iterator begin();
+    set<int>::iterator end();
 
     tuple<vector<string>, DocumentStatus> MatchDocument(const string& raw_query,
         int document_id) const;
+    const map<string, double>&GetWordFrequencies(int document_id) const;
+    void RemoveDocument(int document_id);
 
+    bool IsStopWord(const string& word) const;
+    
 private:
     struct DocumentData {
         int rating;
@@ -44,9 +52,10 @@ private:
     const set<string> stop_words_;
     map<string, map<int, double>> word_to_document_freqs_;
     map<int, DocumentData> documents_;
-    vector<int> document_ids_;
+    set<int> document_ids_;
+    map<int, map<string, double>>word_freqs;
 
-    bool IsStopWord(const string& word) const;
+    
 
     static bool IsValidWord(const string& word); 
 
@@ -93,12 +102,13 @@ vector<Document> SearchServer::FindTopDocuments(const string& raw_query,
 
     auto matched_documents = FindAllDocuments(query, document_predicate);
 
-    sort(matched_documents.begin(), matched_documents.end(),
-        [](const Document& lhs, const Document& rhs) {
-            if (abs(lhs.relevance - rhs.relevance) < VALUE) {
-                return lhs.rating > rhs.rating;
-            }
-        });
+    sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {
+        if (std::abs(lhs.relevance - rhs.relevance) < VALUE) {
+            return lhs.rating > rhs.rating;
+        } else {
+            return lhs.relevance > rhs.relevance;
+        }
+    });
     if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
         matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
     }

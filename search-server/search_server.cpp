@@ -170,4 +170,5 @@ void SearchServer::RemoveDocument(int document_id) {
     documents_.erase(document_id);
     word_freqs.erase(document_id);
     document_ids_.erase(document_id);
+    word_to_document_freqs_.erase(document_id);
 }

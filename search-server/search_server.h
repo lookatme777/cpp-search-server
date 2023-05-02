@@ -6,7 +6,9 @@
 #include <string_view>
 #include <cmath>
 #include <vector>
+#include <set>
 #include <deque>
+#include <thread>
 #include <functional>
 #include "document.h"
 #include "read_input_functions.h"
@@ -27,7 +29,7 @@ public:
 
     explicit SearchServer(const string& stop_words_text);
 
-    void AddDocument(int document_id, const string_view& document, DocumentStatus status,
+    void AddDocument(int document_id, string_view document, DocumentStatus status,
         const vector<int>& ratings);
 
     template <typename DocumentPredicate, typename Policy>
@@ -62,11 +64,13 @@ public:
     bool IsStopWord(const string_view word) const;
 
 private:
-    deque<string>word_;
     struct DocumentData {
         int rating;
         DocumentStatus status;
+        string word_;
     };
+    
+   
     std::set<std::string, std::less<>> stop_words_;
     map<string_view, map<int, double>> word_to_document_freqs_;
     map<int, DocumentData> documents_;
@@ -94,8 +98,7 @@ private:
         vector<string_view> minus_words;
     };
 
-    Query ParseQuery(string_view text) const;
-    Query ParseQuery(bool flag, string_view text) const;
+    Query ParseQuery(string_view text, bool flag = true) const;
 
     double ComputeWordInverseDocumentFreq(const string_view& word) const;
 
